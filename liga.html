@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liga · Futly</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#101208;--panel:#1a1c12;--panel2:#22251a;--lime:#C7E356;--white:#F4F4EC;--grey:#9B9C8E;--line:rgba(244,244,236,.1)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--white);font:15px/1.5 Inter,system-ui,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:24px 18px 60px}
+header{display:flex;gap:16px;align-items:center;margin-bottom:20px}
+header img{width:72px;height:72px;border-radius:16px;object-fit:cover;background:var(--panel2)}
+h1{font:700 26px 'Space Grotesk',sans-serif;margin:0}.sub{color:var(--grey);font-size:13px}
+.tabs{display:flex;gap:8px;margin:18px 0;flex-wrap:wrap}.tabs button{background:var(--panel);color:var(--white);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font:600 14px Inter;cursor:pointer}
+.tabs button.on{background:var(--lime);color:#1A1F08;border-color:var(--lime)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:14px}th{color:var(--grey);font-size:11px;text-align:center;padding:6px 4px}
+td{padding:9px 4px;text-align:center;border-top:1px solid var(--line)}td.eq{text-align:left;font-weight:600}
+td.pts{color:var(--lime);font-weight:700}.esc{width:22px;height:22px;border-radius:5px;vertical-align:middle;margin-right:8px;object-fit:cover;background:var(--panel2)}
+h2{font:700 17px 'Space Grotesk';margin:22px 0 10px}.m{display:flex;align-items:center;gap:8px}.m .t{flex:1;font-weight:600}.m .t.r{text-align:right}
+.res{min-width:70px;text-align:center;font-weight:700;color:var(--lime)}.muted{color:var(--grey);font-size:12px;text-align:center}
+.cta{display:block;text-align:center;margin-top:30px;color:var(--lime);text-decoration:none;font-weight:600}
+</style></head><body><div class="wrap" id="app"><p class="muted">Cargando liga…</p></div>
+<script>
+// ⚠️ Completa con los datos de tu proyecto (Supabase → Settings → API). La "anon key" es pública por diseño.
+const SUPABASE_URL = 'https://rsnanooqkzkwaciotcvm.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzbmFub29xa3prd2FjaW90Y3ZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjQ1NzksImV4cCI6MjEwNDMwMDU3OX0.oeXy9ksDZmF6DbwuTeNLV5V-C0AqaEeKFF0G9Bnu-So';
+const id = new URLSearchParams(location.search).get('id');
+const H = {apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json'};
+const get = p => fetch(`${SUPABASE_URL}/rest/v1/${p}`, {headers: H}).then(r => r.json());
+const rpc = (f, b) => fetch(`${SUPABASE_URL}/rest/v1/rpc/${f}`, {method: 'POST', headers: H, body: JSON.stringify(b)}).then(r => r.json());
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fases = {dieciseisavos:'Dieciseisavos',octavos:'Octavos',cuartos:'Cuartos de final',semis:'Semifinales',tercero:'Tercer lugar',final:'Final'};
+const fecha = f => f ? new Date(f + 'T12:00').toLocaleDateString('es-CL', {weekday:'short', day:'numeric', month:'short'}) : '';
+async function main() {
+  const app = document.getElementById('app');
+  if (!id) { app.innerHTML = '<p class="muted">Falta el identificador de la liga.</p>'; return; }
+  const [liga] = await get(`ligas?id=eq.${id}&publica=eq.true&select=*`);
+  if (!liga) { app.innerHTML = '<p class="muted">Esta liga no existe o no es pública.</p>'; return; }
+  document.title = liga.nombre + ' · Futly';
+  const eqs = await get(`liga_equipos?liga_id=eq.${id}&select=id,grupo,equipos!liga_equipos_equipo_id_fkey(nombre,escudo_url)`);
+  const E = Object.fromEntries(eqs.map(e => [e.id, e.equipos || {}]));
+  const partidos = await get(`liga_partidos?liga_id=eq.${id}&order=ronda,created_at`);
+  const goleadores = await rpc('goleadores_liga', {p_liga: id});
+  const grupos = liga.formato === 'grupos' ? [...new Set(eqs.map(e => e.grupo).filter(Boolean))].sort() : [null];
+  const tablas = await Promise.all(grupos.map(g => rpc('tabla_liga', {p_liga: id, p_grupo: g})));
+  const img = u => u ? `<img class="esc" src="${esc(u)}">` : `<span class="esc" style="display:inline-block"></span>`;
+  const tablaHTML = tablas.map((t, i) => `${grupos[i] ? `<h2>Grupo ${grupos[i]}</h2>` : ''}<div class="card"><table>
+    <tr><th>#</th><th style="text-align:left">Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>DG</th><th>PTS</th></tr>
+    ${t.map((r, j) => `<tr><td>${j + 1}</td><td class="eq">${img(r.escudo_url)}${esc(r.nombre)}</td><td>${r.pj}</td><td>${r.pg}</td><td>${r.pe}</td><td>${r.pp}</td><td>${r.dg > 0 ? '+' : ''}${r.dg}</td><td class="pts">${r.pts}</td></tr>`).join('')}
+  </table></div>`).join('') || '<p class="muted">Aún no hay equipos.</p>';
+  const porRonda = {}; partidos.forEach(p => (porRonda[p.ronda] ??= []).push(p));
+  const fechasHTML = Object.entries(porRonda).map(([r, ps]) => {
+    const f = ps[0].fase; const tit = (f === 'liga' || f === 'grupos') ? `Fecha ${r}` : (fases[f] || 'Eliminación');
+    return `<h2>${tit} <span class="sub">${fecha(ps[0].fecha)}</span></h2>` + ps.map(p => {
+      const jug = p.estado === 'jugado' || p.estado === 'wo';
+      const n = i => i ? esc(E[i]?.nombre) : 'Por definir';
+      return `<div class="card m"><span class="t r">${n(p.local_id)} ${img(E[p.local_id]?.escudo_url)}</span>
+        <span class="res">${jug ? `${p.goles_local} - ${p.goles_visita}` : esc(p.hora || 'vs')}${p.penales_local != null ? `<div class="muted">pen. ${p.penales_local}-${p.penales_visita}</div>` : ''}${p.estado === 'wo' ? '<div class="muted">W.O.</div>' : ''}</span>
+        <span class="t">${img(E[p.visita_id]?.escudo_url)} ${n(p.visita_id)}</span></div>`;
+    }).join('');
+  }).join('') || '<p class="muted">El fixture aún no se publica.</p>';
+  const golHTML = goleadores.length ? `<div class="card"><table><tr><th>#</th><th style="text-align:left">Jugador</th><th style="text-align:left">Equipo</th><th>Goles</th></tr>
+    ${goleadores.slice(0, 20).map((g, i) => `<tr><td>${i + 1}</td><td class="eq">${esc(g.nombre)}</td><td class="eq" style="font-weight:400">${img(g.escudo_url)}${esc(g.equipo)}</td><td class="pts">${g.goles}</td></tr>`).join('')}</table></div>`
+    : '<p class="muted">Aún no hay goles registrados.</p>';
+  const camp = liga.campeon_id && E[liga.campeon_id] ? `<div class="card" style="border-color:var(--lime)">🏆 <b>Campeón:</b> ${esc(E[liga.campeon_id].nombre)}</div>` : '';
+  const vistas = {tabla: tablaHTML, fechas: fechasHTML, goleadores: golHTML};
+  if (liga.formato === 'copa') delete vistas.tabla;
+  let actual = Object.keys(vistas)[0];
+  const pintar = () => {
+    app.innerHTML = `<header>${liga.logo_url ? `<img src="${esc(liga.logo_url)}">` : ''}<div><h1>${esc(liga.nombre)}</h1>
+      <div class="sub">${[liga.temporada, liga.division, liga.tipo].filter(Boolean).map(esc).join(' · ')}</div></div></header>${camp}
+      <div class="tabs">${Object.keys(vistas).map(k => `<button class="${k === actual ? 'on' : ''}" data-k="${k}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</div>
+      ${vistas[actual]}<a class="cta" href="#">Sigue la liga en la app Futly</a>`;
+    app.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { actual = b.dataset.k; pintar(); });
+  };
+  pintar();
+}
+main().catch(() => document.getElementById('app').innerHTML = '<p class="muted">No pudimos cargar la liga.</p>');
+</script></body></html>
