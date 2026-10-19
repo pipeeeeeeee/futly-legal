@@ -36,6 +36,7 @@ td{padding:9px 4px;text-align:center;border-top:1px solid var(--line)}td.eq{text
 // ⚠️ Completa con tu proyecto (Supabase → Settings → API). La "anon key" es pública por diseño.
 const SUPABASE_URL = 'https://rsnanooqkzkwaciotcvm.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzbmFub29xa3prd2FjaW90Y3ZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjQ1NzksImV4cCI6MjEwNDMwMDU3OX0.oeXy9ksDZmF6DbwuTeNLV5V-C0AqaEeKFF0G9Bnu-So';
+
 const qs = new URLSearchParams(location.search), H = {apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json'};
 const get = p => fetch(`${SUPABASE_URL}/rest/v1/${p}`, {headers: H}).then(r => r.json());
 const rpc = (f, b) => fetch(`${SUPABASE_URL}/rest/v1/rpc/${f}`, {method: 'POST', headers: H, body: JSON.stringify(b)}).then(r => r.json());
@@ -52,19 +53,19 @@ async function cargar() {
   const app = document.getElementById('app');
   let id = qs.get('id');
   if (!id && qs.get('org')) {
-    const [c] = await get(`ligas?organizacion_id=eq.${qs.get('org')}&publica=eq.true&select=id&order=created_at&limit=1`);
+    const [c] = await get(`ligas?organizacion_id=eq.${qs.get('org')}&publica=eq.true&borrador=eq.false&select=id&order=created_at&limit=1`);
     id = c?.id;
   }
   if (!id) { app.innerHTML = '<p class="empty">Falta el identificador de la liga.</p>'; return; }
-  const [liga] = await get(`ligas?id=eq.${id}&publica=eq.true&select=*,organizacion:organizaciones(id,nombre,logo_url,banner_url)`);
+  const [liga] = await get(`ligas?id=eq.${id}&publica=eq.true&borrador=eq.false&select=*,organizacion:organizaciones(id,nombre,logo_url,banner_url)`);
   if (!liga) { app.innerHTML = '<p class="empty">Esta liga no existe o no es pública.</p>'; return; }
   const [eqs, partidos, goleadores, avisos, copas, cats] = await Promise.all([
     get(`liga_equipos?liga_id=eq.${id}&estado=eq.aceptado&select=id,grupo,equipos!liga_equipos_equipo_id_fkey(nombre,escudo_url)`),
     get(`liga_partidos?liga_id=eq.${id}&order=ronda,created_at&select=*,cancha:canchas(nombre)`),
     rpc('goleadores_liga', {p_liga: id}),
-    get(`liga_avisos?liga_id=eq.${id}&order=created_at.desc`),
+    get(`liga_avisos?liga_id=eq.${id}&destino_le=is.null&order=fijado.desc,created_at.desc`),
     get(`liga_copas?liga_id=eq.${id}&order=orden`),
-    liga.organizacion_id ? get(`ligas?organizacion_id=eq.${liga.organizacion_id}&publica=eq.true&select=id,division&order=created_at`) : Promise.resolve([]),
+    liga.organizacion_id ? get(`ligas?organizacion_id=eq.${liga.organizacion_id}&publica=eq.true&borrador=eq.false&select=id,division&order=created_at`) : Promise.resolve([]),
   ]);
   const grupos = liga.formato === 'grupos' ? [...new Set(eqs.map(e => e.grupo).filter(Boolean))].sort() : [null];
   const tablas = liga.formato === 'copa' ? [] : await Promise.all(grupos.map(g => rpc('tabla_liga', {p_liga: id, p_grupo: g})));
